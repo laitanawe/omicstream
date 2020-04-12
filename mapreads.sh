@@ -1,5 +1,6 @@
 #!/bin/bash
 # This script automatically maps sequencing reads (RNAseq, WGS e.t.c.) to a reference genome
+# There is no need to download FastQs, omicstreamer tool streams sequence datasets in the cloud
 # Dependencies: magicblast
 
 display_help () {
@@ -34,11 +35,11 @@ in
    f) FILE_DLOAD=$OPTARG
       ;;
    p) PHENO=${OPTARG}
-         ;;
+      ;;
    g) REFNAME=$OPTARG
-         ;;
+      ;;
    n) NUM_THREADS=$OPTARG
-         ;;
+      ;;
    :) printf "missing argument for -%s\n" "$OPTARG" >&2
       echo "$usage" >&2
       exit 1

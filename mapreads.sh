@@ -1,7 +1,7 @@
 #!/bin/bash
-# This script automatically maps sequencing reads (RNAseq, WGS e.t.c.) to a reference genome
-# There is no need to download FastQs, omicstreamer tool streams sequence datasets in the cloud
-# Dependencies: magicblast
+# This script automatically maps sequencing reads (RNAseq, WGS e.t.c.) to a reference genome.
+# Instead of dumping Fastq files, sequence datasets are streamed in the cloud.
+# Dependencies: magicblast, samtools, deeptools
 
 display_help () {
 
@@ -12,12 +12,12 @@ e.g. ./mapreads.sh -r data/sarscov2/sarscov2.fasta -f data/covid19/covid19_Acc_L
 Takes Accession IDs listed in a text file and automatically maps to the specified reference genome
 Mandatory arguments include -r REFERENCE_GENOME_FILE -f PATH_TO_ACCESSION_FILE
 Where:
-  -r    typically use -r <path to reference genome file>
-  -f    file containing the list of ACCESSIONS
-  -p	  phenotype or disease name
-  -g	  genome reference name
-  -n	  number of threads (integer)
-  -h    give this help
+  -r    Reference Genome Path, use -r <path to reference genome file>
+  -f    File containing the list of ACCESSIONS
+  -p	Phenotype or disease name
+  -g	Genome reference name
+  -n	Number of threads (integer)
+  -h    Help or Usage hints
 Report bugs to <Olaitan I. Awe - laitanawe@gmail.com>
 EOF
 
@@ -61,11 +61,13 @@ RESULTS_DIR="${DATADIR}/${OUTNAME}"
 SAM_DIR="sam"
 BAM_DIR="bam"
 SORTEDBAM_DIR="sorted_bam"
+BEDGRAPH="bedgraph"
 
 counturlsam=0
 counturlbam=0
 counturlsortedbam=0
 counturlindexbam=0
+counturlbedgraph=0
 refdb_exists=0
 
 # If we do have a reference genome
@@ -92,10 +94,10 @@ samfiles=(`find "${RESULTS_DIR}/${SAM_DIR}/" -maxdepth 1 -name "*.sam"`)
 if [[ "${#samfiles[@]}" == 0 ]];
   then
      echo "SAM files do not exist, magicblast is needed!"
-     # Create all SAM results subdirectory
+     # Create SAM results subdirectory
      mkdir -pv "${RESULTS_DIR}/${SAM_DIR}"
 
-     # Pick up all the resulting Run ID's and put it into an array
+     # Pick up the resulting Run ID's and put it into an array
      run_ids_array=(`awk '{print $1}' ${FILE_DLOAD}`)
 
      echo "Starting alignment of FASTQ files to reference genome."
@@ -124,11 +126,11 @@ bamfiles=(`find "${RESULTS_DIR}/${BAM_DIR}/" -maxdepth 1 -name "*.bam"`)
 if [[ "${#bamfiles[@]}" == 0 ]];
   then
      echo "BAM files do not exist, conversion of SAM to BAM is needed!"
-     # Create all BAM results sub-directory
+     # Create BAM results sub-directory
      mkdir -pv "${RESULTS_DIR}/${BAM_DIR}"
 
      # We have one line for each Accession and we are doing the SAM to BAM conversion, sorting and indexing sequentially
-     # Pick up all the resulting text-based alignment maps from the SAM directory and put it into an array
+     # Pick up the resulting text-based alignment maps from the SAM directory and put it into an array
 
      run_ids_array_aligned=(`ls ${RESULTS_DIR}/${SAM_DIR}`)
      for run_id_aligned in "${run_ids_array_aligned[@]}"
@@ -152,17 +154,17 @@ else
 fi
 
 
-## To do: Fix automated sorting and indexing from this script. I need some sleep so as to be productive next day.
+## To do: Fix automate sorting and indexing from this script. I need some sleep so as to be productive next day.
 sortedbamfiles=(`find "${RESULTS_DIR}/${SORTEDBAM_DIR}/" -maxdepth 1 -name "*.bam"`)
 if [[ "${#sortedbamfiles[@]}" == 0 ]];
   then
 
      echo "sorted BAM files do not exist, sorting of BAM file is needed!"
 
-     # Create all sorted BAM results sub-directory
+     # Create sorted BAM results sub-directory
      mkdir -pv "${RESULTS_DIR}/${SORTEDBAM_DIR}"
 
-     # Pick up all the resulting Run binary alignment maps from the BAM directory, put it into an array and sort them
+     # Pick up the resulting Run binary alignment maps from the BAM directory, put it into an array and sort them
      run_ids_array_aligned=(`ls ${RESULTS_DIR}/${BAM_DIR}`)
      for run_id_aligned in "${run_ids_array_aligned[@]}"
 
@@ -181,6 +183,7 @@ if [[ "${#sortedbamfiles[@]}" == 0 ]];
      done
 
 else
+
        echo ${#sortedbamfiles[@]}" sorted BAM files exist, sorting of BAM files not needed!"
        for index in ${!sortedbamfiles[@]}; do
          echo "Sorted BAM file "$((index+1))/${#sortedbamfiles[@]} = "${sortedbamfiles[index]}"
@@ -193,7 +196,7 @@ if [[ "${#indexbamfiles[@]}" == 0 ]];
 
      echo "indexed BAM files do not exist, BAM file indexing is needed!"
 
-     # Pick up all the sorted binary alignment maps from the BAM directory, put it into an array and sort them
+     # Pick up the sorted binary alignment maps from the BAM directory, put it into an array and sort them
      run_ids_array_aligned=(`ls ${RESULTS_DIR}/${SORTEDBAM_DIR}`)
      for run_id_aligned in "${run_ids_array_aligned[@]}"
 
@@ -214,8 +217,55 @@ else
          echo "index for BAM file "$((index+1))/${#indexbamfiles[@]} = "${indexbamfiles[index]}"
        done
 
-       echo "SAM, BAM, sorted BAM and indexing files are in their respective directories!"
-
+       echo "SAM, BAM, sorted BAM and Index files are in their respective directories!"
 fi
 
+
+bedgraphfiles=(`find "${RESULTS_DIR}/${BEDGRAPH}/" -maxdepth 1 -name "*.bedgraph"`)
+if [[ "${#bedgraphfiles[@]}" == 0 ]];
+  then
+
+     echo "Bedgraph files do not exist, conversion to Bedgraph file is needed!"
+
+     # Create BEDGRAPH results sub-directory
+     mkdir -pv "${RESULTS_DIR}/${BEDGRAPH}"
+
+     # Pick up the sorted binary alignment maps from the BAM directory, put it into an array and sort them
+     run_ids_array_aligned=(`ls ${RESULTS_DIR}/${SORTEDBAM_DIR}/*.bam`)
+     for run_id_key in ${!run_ids_array_aligned[@]}
+
+       do
+       ((counturlbedgraph++))
+       run_id_now=(`echo ${run_ids_array_aligned[run_id_key]} | cut -d'/' -f4-`)
+
+       #echo "Input: ${run_ids_array_aligned[run_id_key]}"
+       #echo "Output: ${RESULTS_DIR}/${BEDGRAPH}/${run_id_now}.bedgraph"
+
+       echo "Currently generating BEDGRAPH"$counturlbedgraph "from: "${run_ids_array_aligned[run_id_key]}
+       bamCoverage --binSize 100 -b ${run_ids_array_aligned[run_id_key]} --outFileFormat bedgraph -o "${RESULTS_DIR}/${BEDGRAPH}/${run_id_now}.bedgraph"
+
+     done
+       echo "Completed the generation of BEDGRAPH file"
+
+else
+       echo ${#bedgraphfiles[@]}" BEDGRAPH files exist. Conversion to BEDGRAPH files not needed!"
+       for index in ${!bedgraphfiles[@]}; do
+         echo "BEDGRAPH file "$((index+1))/${#bedgraphfiles[@]} = "${bedgraphfiles[index]}"
+       done
+
+       echo "SAM, BAM, sorted BAM, BEDGRAPH and Index files are in their respective directories!"
+fi
+
+#then calculate and print the coverage
+
+for f in `ls ${RESULTS_DIR}/${BEDGRAPH}/*.bedgraph`; do
+  # TODO: display sample filename without the extension
+  run_id_tab = $(print $f | cut -d'.' -f1-)
+  echo ; echo $f | cut -d'/' -f4-; awk 'NR>1{if ($4 < 3) {mylo_phage[$1]++;} else {myhi_phage[$1]++;}} END {print "Strain", " Coverage"; {for (i in myhi_phage) if (mylo_phage[i] < myhi_phage[i]) print i, ": ", 100*myhi_phage[i]/(myhi_phage[i]+mylo_phage[i]);}}' $f;
+
+  #run_id_fin = (`echo $run_id_tab | cut -d'.' -f1-`)
+  #echo $run_id_tab
+done
+
+echo
 echo "Processing of datasets fully completed successfully!"
